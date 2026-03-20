@@ -1,0 +1,641 @@
+% ============================================================
+% Project WISE - Mid-Semester Report
+% ============================================================
+
+\documentclass[12pt,a4paper]{report}
+
+% -------------------- Packages --------------------
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage{svg}
+
+% --- NEW: code listings (for ML code appendix) ---
+\usepackage{listings}
+\usepackage{inconsolata}
+\usepackage{tcolorbox}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+% -------------------- Formatting --------------------
+\onehalfspacing
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Project WISE Mid-Sem Report}
+\rhead{\thepage}
+
+\titleformat{\chapter}{\normalfont\huge\bfseries}{\thechapter.}{0.6em}{}
+
+% -------------------- Title Meta --------------------
+\newcommand{\ProjectTitle}{Project WISE}
+\newcommand{\ProjectSubtitle}{Water Infrastructure Siting for Employment}
+\newcommand{\MentorName}{Prof.\ Dipanjan Chakraborty}
+\newcommand{\MentorDept}{CSIS Department, BITS Pilani, Hyderabad Campus}
+\newcommand{\StudentA}{Rahul Narayanan (2024ADPS0728H)}
+\newcommand{\StudentB}{Bhavya Rakesh Shah (2024A7PS0139H)}
+\newcommand{\ReportDate}{2026-02-28}
+\newcommand{\StudyRegion}{Generic (pan-India design; region to be finalized)}
+
+% -------------------- Helpers --------------------
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{TODO:} #1}}
+
+% -------------------- Listings Setup --------------------
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{coderule}{RGB}{220,220,220}
+
+\lstdefinestyle{wise}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  frame=single,
+  rulecolor=\color{coderule},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=2,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+}
+
+% A small helper box for notes
+\newtcolorbox{wiseNote}{
+  colback=gray!5,
+  colframe=gray!40,
+  boxrule=0.5pt,
+  arc=2pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt
+}
+
+% -------------------- Document --------------------
+\begin{document}
+
+% ============================================================
+% Cover Page (with logo placeholder)
+% ============================================================
+\begin{titlepage}
+  \centering
+
+  % Logo placeholder (optional)
+  \vspace*{0.5cm}
+  \begin{figure}[h!]
+  \centering
+  \includesvg[width=0.5\textwidth]{logo_placeholder.svg} % Adjust width as needed
+   \end{figure}
+
+  {\Large \textbf{\ProjectTitle}}\\[0.2cm]
+  {\large \ProjectSubtitle}\\[0.7cm]
+
+  {\large \textbf{Mid-Semester Progress Report}}\\[0.8cm]
+
+  \begin{tabular}{>{\bfseries}p{0.28\textwidth} p{0.62\textwidth}}
+    Faculty Mentor: & \MentorName\\
+    Mentor Affiliation: & \MentorDept\\
+    Team Members: & \StudentA\\
+    & \StudentB\\
+    Study Region: & \StudyRegion\\
+    Report Date: & \ReportDate\\
+  \end{tabular}
+
+  \vfill
+  {\small Repository (work-in-progress): \url{https://github.com/rahuln-07/SOLVE-Project}}\\
+  \vspace*{0.5cm}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\listoftables
+\clearpage
+
+% ============================================================
+% Abstract
+% ============================================================
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+India faces a severe and worsening water crisis, with rural communities disproportionately affected due to heavy dependence on groundwater for drinking water and agriculture. At the same time, India operates one of the world’s largest public employment programs, the Mahatma Gandhi National Rural Employment Guarantee Act (MGNREGA/NREGA), a significant fraction of whose assets aim to improve water extraction and conservation. However, evidence indicates that many constructed assets fail to meet intended hydrological goals, are socially misplaced, or degrade quickly due to planning misalignment.
+
+Project WISE proposes a decoupled, two-model framework that addresses this “co-optimisation” challenge: (i) a \textbf{social vulnerability model (Model 1 / Priority Map)} that identifies locations with the highest need (water and employment), and (ii) a \textbf{hydrological siting model (Model 2 / Siting Model)} that predicts the most suitable sites for water infrastructure within those vulnerable zones. The proposal emphasizes the use of machine learning and remote sensing to address India’s critical data gaps, including the temporal obsolescence of high-resolution census data.
+
+By mid-semester, the team has built a near-complete Model 2 geospatial ML pipeline using Google Earth Engine (GEE), integrating multiple layers such as Sentinel-2 NDVI, SRTM elevation, slope, flow accumulation, land-use/land-cover (LULC), and rainfall. The principal unresolved bottleneck is reliable ground-truth: well data sourced from IndiaWRIS exhibits inconsistencies and currently appears closer to station/monitoring records than verified well performance labels, raising concerns about label reliability. As a contingency, the mentor has suggested pivoting Model 2 from \textit{well siting} to \textit{check dam siting} if well labels remain infeasible. In parallel, for Model 1, the team has identified MGNREGA employment datasets for the most recent financial year and has begun assessing an external “Village Development Model” approach as an implementation baseline. This report consolidates the proposal’s motivation and methodology with the current implementation status, challenges, and next-phase plan, and additionally documents the code-backed ML pipeline built so far.
+
+\clearpage
+\pagenumbering{arabic}
+
+% ============================================================
+% 1. Introduction
+% ============================================================
+\chapter{Introduction}
+% (UNCHANGED)
+\section{Motivation}
+India is facing what has been described as the worst water crisis in its history, driven by systematic over-exploitation and poor resource planning. Rural India is especially vulnerable because groundwater supplies approximately 85\% of drinking water and supports over 60\% of agriculture. National demand is projected to exceed supply significantly by 2030, and large parts of the country already face high to extreme water stress.
+
+Yet, evidence also shows interventions can work when designed and sited properly. Reported increases in groundwater recharge due to conservation structures since 2017 indicate that effective asset placement has meaningful hydrological impact. The core challenge is scaling these successes while avoiding misallocated spending and ineffective infrastructure.
+
+\section{Problem Statement}
+MGNREGA is both a social safety net and a national infrastructure program intended to create durable assets, with “water conservation and water harvesting” being the largest category of assets. In practice, the social objective (maximizing employment) and the hydrological objective (maximizing water impact) are often misaligned:
+\begin{itemize}
+  \item an asset that maximizes employment may be hydrologically inefficient or poorly sited, and
+  \item a hydrologically optimal site may be remote, difficult to construct, or benefit a minimal population.
+\end{itemize}
+
+The central problem is thus one of \textbf{data-driven co-optimisation}: how can we systematically site water assets to balance social welfare (employment, vulnerability) with hydrological effectiveness (recharge, yield, resilience), without resorting to arbitrary exchange rates between incomparable objectives (e.g., “livelihood-days” vs.\ “litres of recharge”)?
+
+\section{Proposed Solution Overview (Decoupled Framework)}
+Project WISE proposes a \textbf{decoupled two-model framework}:
+\begin{enumerate}[label=\textbf{M\arabic*.}]
+  \item \textbf{Model 1 (Priority Map)}: A social vulnerability model that produces a high-resolution “need layer” (water + employment) using satellite imagery and ML, addressing the obsolescence and coarse spatial scale of available socio-economic data.
+  \item \textbf{Model 2 (Siting Model)}: A hydrological siting model that operates \textit{within} the high-need zones identified by Model 1 to recommend optimal sites for specific interventions (wells, check dams), using geospatial ML/hybrid architectures.
+\end{enumerate}
+
+This design is motivated by feasibility (reduced search space) and by avoiding ethically arbitrary objective functions.
+
+\section{Study Region}
+The system is designed to be \textit{generic} and scalable (pan-India in principle). At this stage, we keep the study region generic; in later phases, experiments will focus on selected districts/states depending on dataset availability and mentor guidance.
+
+\section{Mid-Semester Deliverables}
+At mid-semester, the project aims to demonstrate:
+\begin{itemize}
+  \item a working Model 2 ML pipeline in GEE for feature extraction and model-ready datasets,
+  \item a clear plan (and partial implementation) of Model 1 using MGNREGA and satellite-based proxies,
+  \item an evidence-based assessment of data bottlenecks and a pivot strategy (wells $\rightarrow$ check dams).
+\end{itemize}
+
+% ============================================================
+% 2. Background and Related Work
+% ============================================================
+\chapter{Background and Related Work}
+% (UNCHANGED)
+\section{Groundwater Crisis and the Role of Siting}
+Over-exploitation, contamination, and ecological tipping points increase the urgency of targeted interventions. A critical observation from public reports is that \textit{well-sited} structures can deliver measurable improvements (e.g., increases in safe assessment units), but poorly sited or low-durability assets can fail or cause negligible benefit, leading to wasted resources and loss of trust.
+
+\section{Remote Sensing Proxies for Hydrology and Socio-Economic Conditions}
+Satellite imagery and derived indices are widely used for:
+\begin{itemize}
+  \item \textbf{vegetation health and water availability} (e.g., NDVI dynamics),
+  \item \textbf{terrain and drainage} (e.g., elevation, slope, catchment flow),
+  \item \textbf{land cover constraints} (cropland, built-up, forest),
+  \item \textbf{socio-economic proxies} (e.g., nighttime lights, settlement patterns, road density).
+\end{itemize}
+
+\section{Learning Poverty/Vulnerability from Satellite Imagery}
+A foundational reference in the proposal is Jean et al.\ (2016), which demonstrated that deep learning models can learn features from daytime and nighttime imagery predictive of economic well-being. This motivates Model 1 as a way to bridge the 14-year gap since the 2011 Census and overcome coarse district-level alternatives (NFHS, PLFS, etc.).
+
+\section{Geospatial ML and Hybrid Architectures for Suitability}
+For siting tasks, hybrid systems often outperform purely manual feature engineering:
+\begin{itemize}
+  \item CNN/U-Net can learn high-level spatial features,
+  \item classical models (SVM/RF/GBT) can provide robust classification/regression with strong tabular performance.
+\end{itemize}
+However, these systems critically depend on well-defined ground truth and careful evaluation to avoid spatial leakage.
+
+% ============================================================
+% 3. Project Objectives and Success Criteria
+% ============================================================
+\chapter{Objectives and Success Criteria}
+% (UNCHANGED)
+\section{Objectives (from Proposal)}
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+  \item Build a scalable, data-driven decision framework to align MGNREGA’s employment goals with water-security outcomes via co-optimised siting.
+  \item Develop \textbf{Model 1 (Priority Map)} to identify high vulnerability zones at high spatial resolution using satellite imagery + ML, reducing reliance on outdated census data.
+  \item Develop \textbf{Model 2 (Siting Model)} to recommend optimal sites for water infrastructure (wells and/or check dams), using hybrid ML/DL architectures and performance-based labels.
+  \item Enable structure-specific reweighting (wells vs.\ check dams) to improve targeting precision.
+\end{enumerate}
+
+\section{Operational Success Criteria}
+We consider Model 1 successful if it can:
+\begin{itemize}
+  \item produce plausible, spatially granular vulnerability maps within selected districts,
+  \item demonstrate validation at district-level aggregation against NFHS indicators and job-need signals.
+\end{itemize}
+
+We consider Model 2 successful if it can:
+\begin{itemize}
+  \item learn predictive patterns from ground-truth assets and yield stable suitability predictions,
+  \item demonstrate meaningful ranking performance in held-out spatial validation,
+  \item produce interpretable recommendations consistent with known hydrological constraints.
+\end{itemize}
+
+% ============================================================
+% 4. Data Sources
+% ============================================================
+\chapter{Data Sources}
+% (UNCHANGED)
+\section{Summary of Key Datasets (from Proposal)}
+Table~\ref{tab:datasets} summarizes core datasets proposed for Model 1 and Model 2.
+
+\begin{longtable}{p{0.18\textwidth} p{0.35\textwidth} p{0.37\textwidth}}
+\caption{Key datasets proposed for Project WISE.}\label{tab:datasets}\\
+\toprule
+\textbf{Category} & \textbf{Dataset / Source} & \textbf{Intended Use} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Category} & \textbf{Dataset / Source} & \textbf{Intended Use} \\
+\midrule
+\endhead
+Socio-economic & Census 2011 & Panchayat-level labels for Model 1 training; socio-economic baseline \\
+Socio-economic & NFHS (district-level) via NDAP/NITI & Phase 1 district filtering; Model 1 validation at aggregated level \\
+Employment need & MGNREGA/NREGA reports (expenditure, demand, person-days) & Job-need layer; unmet demand proxies; Model 1 feature layer \\
+Remote sensing & Google Earth Engine + Sentinel/Landsat/MODIS & Imagery for CNN feature learning; NDVI; time series composites \\
+Hydrology & CoRE Stack hydrological layers (water balance, recharge/discharge, extraction stage, aquifer type, etc.) & Water-need layer for Model 1; engineered features for Model 2 \\
+Terrain & DEM (e.g., SRTM), terrain classification & Constraints and features: elevation, slope, watershed delineation \\
+Groundwater & CGWB monitoring / well records; groundwater stress indicators & Well ground-truth (yield/depth/levels); feasibility filters \\
+WRIS & IndiaWRIS API (stations: groundwater/rainfall/soil moisture etc.) & Potential proxy data; currently under exploration for usability \\
+Other & ISRO Bhuvan yield data & Additional groundwater yield features (if accessible) \\
+\bottomrule
+\end{longtable}
+
+\section{Model 2 (Current Implementation): Datasets Integrated So Far}
+The team has already integrated the following layers in the current GEE pipeline:
+\begin{itemize}
+  \item Sentinel-2 NDVI (vegetation proxy),
+  \item SRTM elevation and slope,
+  \item flow accumulation / derived stream masks (HydroSHEDS),
+  \item WorldCover LULC,
+  \item CHIRPS rainfall aggregates.
+\end{itemize}
+
+\section{Ground Truth Constraints: Wells vs Sensor Stations}
+A major mid-semester bottleneck is ground truth for wells:
+\begin{itemize}
+  \item IndiaWRIS sources accessed so far contain \textbf{inconsistencies} and are not yet validated as a clean “marked wells + yield” dataset.
+  \item Borewell locations are hard to validate from imagery, creating uncertainty about label reliability.
+  \item Model 2’s supervised training is highly sensitive to label noise; therefore, reliability is a central risk.
+\end{itemize}
+
+\section{Mentor-Approved Contingency: Pivot to Check Dams}
+Given the above, the mentor has offered an alternative:
+\begin{itemize}
+  \item pivot Model 2 to \textbf{check dam siting} if well ground truth cannot be made reliable,
+  \item use MGNREGA geotagged asset data or detection via imagery to build check dam ground truth.
+\end{itemize}
+
+% ============================================================
+% 5. Proposed Methodology (from Proposal)
+% ============================================================
+\chapter{Proposed Methodology (from Proposal)}
+% (UNCHANGED)
+\section{Key Design Choice: Decoupling Instead of Multi-Objective Optimisation}
+Rather than defining a single objective function that “trades” hydrological benefits for employment benefits, the project decouples the objectives into sequential filtering (Model 1) and structure-specific siting (Model 2). This avoids arbitrary exchange rates and reduces computational load by constraining the search space.
+
+\section{Model 1: Priority Map (Social Vulnerability)}
+\subsection{Core Idea}
+Model 1 addresses a scale-and-temporality mismatch:
+\begin{itemize}
+  \item 2011 Census is high-resolution but outdated,
+  \item newer surveys are more recent but spatially coarse.
+\end{itemize}
+Model 1 trains a CNN to learn mappings:
+\[
+(2011~\text{Satellite Imagery} + 2011~\text{Terrain}) \rightarrow (2011~\text{Census Labels})
+\]
+and then applies it to:
+\[
+(2025~\text{Satellite Imagery} + 2025~\text{Terrain}) \rightarrow (2025~\text{Predicted Vulnerability})
+\]
+
+\subsection{Two-Phase Implementation Strategy}
+\textbf{Phase 1 (District Filtering):} Reduce national scope by scoring districts on:
+\begin{itemize}
+  \item socio-economic need (NFHS district indicators),
+  \item job need (MGNREGA unmet demand proxies),
+  \item water need (hydrological/climate indicators such as drought frequency, extraction stage, water balance).
+\end{itemize}
+
+\textbf{Phase 2 (High-Resolution Mapping):} Within selected districts:
+\begin{itemize}
+  \item generate panchayat-level socio-economic predictions using satellite-based CNN,
+  \item incorporate panchayat-level job-need and water-need layers,
+  \item normalize and combine via a weighted vulnerability index (with expert consultation).
+\end{itemize}
+
+\subsection{Structure-Specific Weighting}
+The proposal highlights customizing weights by structure type:
+\begin{itemize}
+  \item \textbf{Wells:} emphasize improved drinking water access indicators, child diarrheal disease indicators, groundwater quality feasibility filters.
+  \item \textbf{Check dams:} emphasize agricultural employment, drought frequency, rainfall variability, over-exploitation, runoff/infiltration suitability.
+\end{itemize}
+
+\section{Model 2: Siting Model (Hydrological Siting)}
+\subsection{Check Dams and Recharge Structures Workflow}
+\textbf{Ground truth:}
+\begin{itemize}
+  \item obtain check dam coordinates (MGNREGA geotagged assets, or detect via U-Net on high-resolution imagery),
+  \item compute a success score using “before/after” NDVI changes (e.g., 3 years before vs 3 years after construction) within watershed AOI derived from DEM.
+\end{itemize}
+
+\textbf{Feature engineering:} terrain, hydrology, soil, geology, LULC, infrastructure.
+
+\textbf{Hybrid model training:}
+\begin{itemize}
+  \item train a U-Net as feature extractor,
+  \item concatenate deep features with engineered features,
+  \item train tabular classifiers (SVM, RF, GBT) to predict site success.
+\end{itemize}
+
+\subsection{Wells Workflow}
+\textbf{Ground truth:} use CGWB / state records and MGNREGA records to obtain well coordinates and performance measures (yield, depth, water level).
+
+\textbf{Architectures:}
+\begin{itemize}
+  \item patch-based CNN operating on a spatial chip (e.g., 1km $\times$ 1km) centered on wells,
+  \item hybrid approach where CNN features augment engineered features fed to SVM/RF/GBT.
+\end{itemize}
+
+% ============================================================
+% 6. Mid-Semester Progress (Actual Work Done)
+% ============================================================
+\chapter{Mid-Semester Progress}
+% (UNCHANGED, with a small extension)
+\section{Summary of Work Completed}
+The team’s progress to date includes:
+\begin{itemize}
+  \item building an ML pipeline using Google Earth Engine for \textbf{Model 2},
+  \item integrating key geospatial layers (Sentinel-2 NDVI, SRTM-derived terrain, flow accumulation, LULC, and rainfall),
+  \item conducting extensive literature review and background research,
+  \item identifying MGNREGA datasets for Model 1 employment signals,
+  \item exploring IndiaWRIS API data and assessing inconsistencies and suitability for ground truth,
+  \item implementing local preprocessing utilities in Python to merge and validate exported TFRecords from GEE for downstream training.
+\end{itemize}
+
+\section{Model 2: Implemented Pipeline in GEE}
+\subsection{Current Status}
+Model 2 is \textit{almost ready} from a pipeline standpoint: ingestion and integration of layers are complete and feature extraction is operational. Remaining work centers on:
+\begin{itemize}
+  \item finalizing usable ground-truth labels (wells vs alternative),
+  \item tuning model hyperparameters and evaluation strategy based on final data,
+  \item running controlled experiments (ablation, spatial CV).
+\end{itemize}
+
+\subsection{Datasets Already Integrated}
+As implemented, the pipeline uses:
+\begin{itemize}
+  \item Sentinel-2 surface reflectance and NDVI composites,
+  \item SRTM DEM and slope,
+  \item HydroSHEDS flow accumulation and derived stream masks,
+  \item ESA WorldCover LULC,
+  \item CHIRPS rainfall aggregates.
+\end{itemize}
+
+\section{Well Data Acquisition: Challenges and Learnings}
+\subsection{IndiaWRIS Observations}
+IndiaWRIS data explored so far primarily provides data with \textbf{inconsistencies} for the purpose of building clean supervised labels. Two key issues emerged:
+\begin{enumerate}
+  \item \textbf{Mismatch to ground truth needs:} available records require further validation to serve as verified “well performance labels”.
+  \item \textbf{Reliability/validation constraint:} borewells are often not visually verifiable via satellite imagery, making label validation difficult.
+\end{enumerate}
+The team is exploring whether sensor time series can still be useful (e.g., as hydro-context features rather than labels), or whether a different well dataset is necessary.
+
+\subsection{Critical Decision: Wells vs Check Dams}
+If no breakthrough is found for reliable well ground truth, the project will pivot to \textbf{check dam siting}, for which:
+\begin{itemize}
+  \item MGNREGA assets may be geotagged,
+  \item success can be estimated through NDVI-based before/after analysis,
+  \item dam structures may be more reliably identified (by hydrological constraints and/or imagery).
+\end{itemize}
+
+\section{Model 1 Progress: Data Identification and Baseline Direction}
+\subsection{MGNREGA Employment Data}
+The team has identified an MGNREGA dataset containing employment data for the last financial year. Next steps include cleaning and selecting target variables for the priority map’s job-need layer.
+
+\subsection{External Baseline and Mentor Research Code}
+The team plans to implement and adapt:
+\begin{itemize}
+  \item \url{https://github.com/amangupt01/Village_Development_Model}
+\end{itemize}
+and has access to a mentor research drive that includes pipelines for feature extraction and mapping (2001--2011 census change) to present-day prediction.
+
+% ============================================================
+% 6A. NEW CHAPTER: Implementation Details (Code-Backed)
+% ============================================================
+\chapter{Implementation Details: Model 2 ML Pipeline (Code-Backed)}
+
+\section{Why we document the pipeline in the report}
+To make Model 2 reproducible and auditable, we document the end-to-end pipeline from:
+\begin{enumerate}
+  \item region selection and imagery filtering in GEE,
+  \item feature construction (NDVI, slope, flow accumulation, TWI, drainage density, LULC, rainfall),
+  \item label construction (currently proxy NDVI-based thresholds; will be replaced by real ground truth),
+  \item patch extraction and TFRecord export,
+  \item local TFRecord validation, merging, and cropping for downstream training.
+\end{enumerate}
+
+\begin{wiseNote}
+\textbf{Important:} the current training labels used in the GEE pipeline are \emph{proxy labels} based on NDVI percentile thresholds (cropland-first), intended to validate the mechanics of sampling, patch export, and preprocessing. In the next phase, these labels will be replaced by verified well/check-dam ground truth as described in the proposal.
+\end{wiseNote}
+
+\section{Feature stack used in the current GEE composite}
+The current Model 2 composite includes (band names may vary slightly depending on final implementation):
+\begin{itemize}
+  \item slope (from SRTM),
+  \item flow accumulation (HydroSHEDS),
+  \item topographic wetness index (TWI),
+  \item drainage density (derived via neighborhood sum of stream mask),
+  \item LULC (ESA WorldCover),
+  \item rainfall (CHIRPS annual aggregate),
+  \item NDVI (Sentinel-2 median in the chosen season window).
+\end{itemize}
+
+\section{Sampling and patch generation}
+The GEE pipeline:
+\begin{itemize}
+  \item computes NDVI percentiles (p25/p75) over cropland pixels (fallback to district-wide),
+  \item defines positive/negative masks using thresholded NDVI,
+  \item samples a fixed number of positive/negative points with fallback strategies,
+  \item extracts $65\times 65$ neighborhood patches at 10m resolution,
+  \item batches exports to Google Drive as compressed TFRecords.
+\end{itemize}
+
+\section{Local preprocessing of exported TFRecords}
+After exporting multiple TFRecord shards from Drive:
+\begin{itemize}
+  \item \texttt{checkTFRecord.py} inspects feature keys and verifies tensor shapes,
+  \item \texttt{mergeAndCrop.py} reads all gzip TFRecords, decodes the float patch array, center/top-left crops from $65\times 65$ to $64\times 64$ (for ML convenience), and writes a merged TFRecord with compact byte-encoded images and integer labels.
+\end{itemize}
+
+\section{Current tuning knobs and operational parameters}
+Table~\ref{tab:opsparams} lists parameters currently used; these will be tuned per region and per final label strategy.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.32\textwidth} p{0.55\textwidth}}
+\toprule
+\textbf{Parameter} & \textbf{Current role in pipeline} \\
+\midrule
+\texttt{START}, \texttt{END} & seasonal window for Sentinel-2 imagery collection \\
+\texttt{CLOUDY\_PIXEL\_PERCENTAGE} & upper bound for filtering cloudy scenes \\
+\texttt{TARGET\_SCALE} & spatial scale for composite and patch export (10m) \\
+\texttt{PATCH} & patch width/height in pixels (65; later cropped to 64) \\
+\texttt{NUM\_POS}, \texttt{NUM\_NEG} & size of sampled positive/negative sets \\
+\texttt{BATCH\_SIZE} & batching for Drive exports to avoid task failure \\
+\texttt{TILE\_SCALE} & memory/performance tradeoff for \texttt{sampleRegions} \\
+\bottomrule
+\end{tabular}
+\caption{Operational parameters for the current Model 2 GEE + TFRecord pipeline.}
+\label{tab:opsparams}
+\end{table}
+
+% ============================================================
+% 7. Risks, Constraints, and Mitigation
+% ============================================================
+\chapter{Risks, Constraints, and Mitigation}
+% (UNCHANGED)
+\section{Primary Risk: Ground Truth Reliability for Model 2}
+\textbf{Risk:} Model 2 depends on reliable labels (well/check dam coordinates and performance). Poor labels will lead to incorrect recommendations.
+
+\textbf{Mitigation path:}
+\begin{itemize}
+  \item seek verified well records (CGWB/state government) and align with coordinates,
+  \item if wells remain infeasible, pivot to check dams with NDVI-based success scoring,
+  \item treat IndiaWRIS sensor data as contextual features rather than labels if appropriate.
+\end{itemize}
+
+\section{Spatial Bias and Evaluation Leakage}
+\textbf{Risk:} Standard random splits can overestimate accuracy due to spatial autocorrelation.
+
+\textbf{Mitigation:}
+\begin{itemize}
+  \item implement spatial block cross-validation,
+  \item define robust negative sampling strategies (stratified/background sampling),
+  \item report uncertainty and perform sensitivity analyses.
+\end{itemize}
+
+\section{Model 1 Data Resolution and Boundary Issues}
+\textbf{Risk:} Panchayat/village boundaries and codes may change; integrating multiple datasets is complex.
+
+\textbf{Mitigation:}
+\begin{itemize}
+  \item normalize using official identifiers where possible,
+  \item aggregate to consistent spatial units when necessary,
+  \item document assumptions and reconciliation steps.
+\end{itemize}
+
+% ============================================================
+% 8. Plan and Timeline
+% ============================================================
+\chapter{Plan for the Next Phase}
+% (UNCHANGED)
+\section{Next Steps: Model 2}
+\begin{enumerate}
+  \item Finalize ground-truth strategy (wells vs check dams) and lock datasets.
+  \item Construct training samples (positive sites + negatives) with careful spatial design.
+  \item Train baseline models (SVM/RF/GBT) and establish spatial CV evaluation.
+  \item Tune models and run ablation studies on layer contributions (NDVI, terrain, soil, LULC, groundwater layers).
+  \item Generate suitability maps and conduct qualitative sanity checks (hydrological constraints).
+\end{enumerate}
+
+\section{Next Steps: Model 1}
+\begin{enumerate}
+  \item Clean and standardize MGNREGA employment datasets; define job-need signals.
+  \item Begin prototype CNN for socio-economic prediction using historical imagery + census labels.
+  \item Implement/adapt external baseline model (Village Development Model) and compare approaches.
+  \item Validate aggregated outputs against NFHS district indicators.
+\end{enumerate}
+
+\section{High-Level Timeline (Aligned to Proposal)}
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.22\textwidth} p{0.70\textwidth}}
+\toprule
+\textbf{Quarter} & \textbf{Milestones} \\
+\midrule
+Q1 & Data acquisition; initial Model 1 prototyping; feasibility evaluation \\
+Q2 & Model 1 development + validation; integrate job/water need layers; begin Model 2 preprocessing \\
+Q3 & Model 2 (check dam siting) ground truth + training; hybrid architecture evaluation \\
+Q4 & Model 2 (well siting) ground truth + training (if feasible); final integration and dissemination \\
+\bottomrule
+\end{tabular}
+\caption{Quarterly milestones (from proposal), noting that Model 2 may pivot based on well data feasibility.}
+\end{table}
+
+% ============================================================
+% 9. Conclusion
+% ============================================================
+\chapter{Conclusion}
+% (UNCHANGED)
+Project WISE addresses a critical national challenge: enabling data-driven siting of water infrastructure that balances rural employment benefits with hydrological effectiveness. The proposal introduces an innovative decoupled framework: a Priority Map (Model 1) that identifies socially vulnerable zones using ML and satellite imagery, followed by a Siting Model (Model 2) that recommends optimal infrastructure sites using hybrid ML/DL architectures.
+
+At mid-semester, the team has delivered a strong implementation foundation for Model 2 via a GEE-based pipeline integrating multiple remote-sensing and terrain layers. The largest remaining challenge is ground-truth availability and reliability for well siting, where IndiaWRIS data exhibits inconsistencies and borewell validation via imagery is difficult. The project therefore includes an active contingency strategy to pivot to check dam siting, where success may be quantifiable via NDVI-based before/after analysis and assets may be more reliably identified.
+
+In the next phase, the team will prioritize finalizing ground truth, establishing rigorous spatial validation, tuning Model 2, and advancing Model 1 through MGNREGA job-need integration and satellite-based socio-economic prediction. Together, these steps aim to produce a practical decision framework that can meaningfully improve the effectiveness and targeting of water-related MGNREGA assets.
+
+% ============================================================
+% References (from proposal citations)
+% ============================================================
+\chapter*{References}
+\addcontentsline{toc}{chapter}{References}
+\begin{enumerate}
+  \item Press Information Bureau. (2019, December 9). NITI Aayog Report on Water Crisis. \url{https://www.pib.gov.in/newsite/PrintRelease.aspx?relid=195635}
+  \item NITI Aayog, Government of India. (2018, June). Composite Water Management Index. \url{https://archive.nyu.edu/handle/2451/42272}
+  \item World Bank. (2010). Deep Wells and Prudence. \url{https://documents.worldbank.org/en/publication/documents-reports/documentdetail/272661468267911138/deep-wells-and-prudence-towards-pragmatic-action-for-addressing-groundwater-overexploitation-in-india}
+  \item PTI / Economic Times. (2018, June 21). India’s water demand to be twice the available supply by 2030. \url{https://economictimes.indiatimes.com/news/economy/agriculture/by-2030-indias-water-demand-to-be-twice-the-available-supply-indicating-severe-water-scarcity-report/articleshow/64679218.cms}
+  \item VisionIAS. (2025, February 22). Annual Ground Water Quality Report 2024. \url{https://visionias.in/current-affairs/monthly-magazine/2025-02-22/environment/annual-ground-water-quality-report-2024}
+  \item SANDRP. (2024, January 16). India Groundwater 2023: Reaching Depletion Tipping Point?. \url{https://sandrp.in/2024/01/16/india-groundwater-2023-reaching-depletion-tipping-point/}
+  \item Press Information Bureau. (2025, January 6). India’s Groundwater Revival. \url{https://www.pib.gov.in/PressReleasePage.aspx?PRID=2090573}
+  \item Press Information Bureau. (2024, December 31). Year-End Review 2024: Department of Rural Development. \url{https://www.pib.gov.in/PressReleasePage.aspx?PRID=2088996}
+  \item MoSPI / OGD Platform. (2020, October 15). Physical outcomes under NREGA. \url{https://www.data.gov.in/catalog/physical-outcomes-under-mahatma-gandhi-national-rural-employment-guarantee-act-nrega}
+  \item Ministry of Rural Development. Water Conservation under MGNREGA. \url{https://nrega.dord.gov.in/JalShakti/JSAsuccess_story.aspx}
+  \item NIRDPR. (2021). Study on role of MGNREGA in water conservation and drought mitigation. \url{http://nirdpr.org.in/nird_docs/rss/rss140621-1.pdf}
+  \item Jean, N., Burke, M., Xie, M., Davis, W. M., Lobell, D. B., \& Ermon, S. (2016). Combining satellite imagery and machine learning to predict poverty. \textit{Science}, 353(6301), 790--794. \url{https://doi.org/10.1126/science.aaf7894}
+  \item CoRE Stack datasets and layers. \url{https://core-stack.org/}
+  \item IndiaWRIS API. \url{https://indiawris.gov.in/swagger-ui/index.html}
+  \item CGWB groundwater data portal. \url{https://gwdata.cgwb.gov.in/}
+  \item Village Development Model (baseline reference). \url{https://github.com/amangupt01/Village_Development_Model}
+\end{enumerate}
+
+% ============================================================
+% NEW: Appendix with code listings
+% ============================================================
+\appendix
+\chapter{Code Appendix (Selected)}
+\label{app:code}
+
+\section{Google Earth Engine pipeline (Model 2 prototype)}
+\begin{wiseNote}
+File: \texttt{code/gee\_pipeline.js}. This listing contains the operational pipeline for building the composite, selecting NDVI thresholds (cropland-first), sampling points, extracting patch arrays, and exporting batched TFRecords to Drive.
+\end{wiseNote}
+
+\lstset{style=wise,language=Java}
+\lstinputlisting{code/gee_pipeline.js}
+
+\section{TFRecord inspection utility}
+\begin{wiseNote}
+File: \texttt{code/checkTFRecord.py}. This script reads one TFRecord (gzip) and prints feature keys and basic statistics to confirm expected shapes and datatypes.
+\end{wiseNote}
+
+\lstset{style=wise,language=Python}
+\lstinputlisting{code/checkTFRecord.py}
+
+\section{TFRecord merge + crop utility}
+\begin{wiseNote}
+File: \texttt{code/mergeAndCrop.py}. This script merges multiple exported TFRecord shards, decodes the patch tensor, crops $65\times 65 \rightarrow 64\times 64$, and writes a merged TFRecord suitable for downstream training.
+\end{wiseNote}
+
+\lstset{style=wise,language=Python}
+\lstinputlisting{code/mergeAndCrop.py}
+
+\end{document}
