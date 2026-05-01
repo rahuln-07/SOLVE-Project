@@ -1,0 +1,821 @@
+
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{amsmath,amssymb}
+\usepackage{siunitx}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage{svg}
+
+% --- code listings ---
+\usepackage{listings}
+\usepackage{inconsolata}
+\usepackage{tcolorbox}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+
+\onehalfspacing
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Project WISE Final Report}
+\rhead{\thepage}
+
+\titleformat{\chapter}{\normalfont\huge\bfseries}{\thechapter.}{0.6em}{}
+
+
+\newcommand{\ProjectTitle}{Project WISE}
+\newcommand{\ProjectSubtitle}{Water Infrastructure Siting for Employment}
+\newcommand{\MentorName}{Prof.\ Dipanjan Chakraborty}
+\newcommand{\MentorDept}{CSIS Department, BITS Pilani, Hyderabad Campus}
+\newcommand{\StudentA}{Rahul Narayanan (2024ADPS0728H)}
+\newcommand{\StudentB}{Bhavya Rakesh Shah (2024A7PS0139H)}
+\newcommand{\ReportDate}{2026-04-30}
+\newcommand{\StudyRegion}{Anantapur (Model 2 experiments) + Generic (pan-India design)}
+
+
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{TODO:} #1}}
+
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{coderule}{RGB}{220,220,220}
+
+\lstdefinestyle{wise}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  frame=single,
+  rulecolor=\color{coderule},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=2,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+}
+
+\newtcolorbox{wiseNote}{
+  colback=gray!5,
+  colframe=gray!40,
+  boxrule=0.5pt,
+  arc=2pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt
+}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+
+  \vspace*{0.5cm}
+  \begin{figure}[h!]
+    \centering
+    \includesvg[width=0.5\textwidth]{logo_placeholder.svg}
+  \end{figure}
+
+  {\Large \textbf{\ProjectTitle}}\\[0.2cm]
+  {\large \ProjectSubtitle}\\[0.7cm]
+
+  {\large \textbf{Final Report (Mid-Sem + End-Sem Work)}}\\[0.8cm]
+
+  \begin{tabular}{>{\bfseries}p{0.28\textwidth} p{0.62\textwidth}}
+    Faculty Mentor: & \MentorName\\
+    Mentor Affiliation: & \MentorDept\\
+    Team Members: & \StudentA\\
+    & \StudentB\\
+    Study Region: & \StudyRegion\\
+    Report Date: & \ReportDate\\
+  \end{tabular}
+
+  \vfill
+  {\small Repository (work-in-progress): \url{https://github.com/rahuln-07/SOLVE-Project}}\\
+  \vspace*{0.5cm}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\listoftables
+\listoffigures
+\clearpage
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+India faces a severe and worsening water crisis, with rural communities disproportionately affected due to heavy dependence on groundwater for drinking water and agriculture. At the same time, India operates one of the world’s largest public employment programs, the Mahatma Gandhi National Rural Employment Guarantee Act (MGNREGA/NREGA), a significant fraction of whose assets aim to improve water extraction and conservation. However, evidence indicates that many constructed assets fail to meet intended hydrological goals, are socially misplaced, or degrade quickly due to planning misalignment.
+
+Project WISE proposes a decoupled, two-model framework that addresses this “co-optimisation” challenge: (i) a \textbf{social vulnerability model (Model 1 / Priority Map)} that identifies locations with the highest need (water and employment), and (ii) a \textbf{hydrological siting model (Model 2 / Siting Model)} that predicts the most suitable sites for water infrastructure within those vulnerable zones.
+
+In the first phase (mid-semester), we built an end-to-end \textbf{Model 2} pipeline in Google Earth Engine (GEE) to extract multi-band geospatial features and export patch datasets for ML training. The primary unresolved bottleneck at that stage was reliable ground truth for wells, where some explored sources (e.g., IndiaWRIS station-style records) appeared inconsistent for supervised labeling.
+
+In the second phase (end-semester), we resolved the bottleneck by adopting a more reliable well dataset discovered post-midsem (\url{https://yashveeeeeeer.github.io/india-geodata/}) and used it alongside the established GEE feature pipeline to train and evaluate multiple architectures. We compare a pure CNN baseline (ResNet18), a pure tabular baseline (XGBoost on mean/std statistics), and two hybrid models (ResNet embeddings fused with RandomForest and XGBoost). The hybrid architectures achieved the best performance (\(\approx 75\%\) accuracy), and we argue for selecting the deployed model based on \textbf{safety-critical Recall for ``Not Suitable''} (to reduce costly false positives in rural drilling decisions).
+
+\clearpage
+\pagenumbering{arabic}
+
+
+\chapter{Introduction}
+
+\section{Motivation}
+India is facing what has been described as the worst water crisis in its history, driven by systematic over-exploitation and poor resource planning. Rural India is especially vulnerable because groundwater supplies approximately 85\% of drinking water and supports over 60\% of agriculture. National demand is projected to exceed supply significantly by 2030, and large parts of the country already face high to extreme water stress.
+
+\section{Problem Statement}
+MGNREGA is both a social safety net and a national infrastructure program intended to create durable assets, with “water conservation and water harvesting” being the largest category of assets. In practice, the social objective (maximizing employment) and the hydrological objective (maximizing water impact) are often misaligned:
+\begin{itemize}
+  \item an asset that maximizes employment may be hydrologically inefficient or poorly sited, and
+  \item a hydrologically optimal site may be remote, difficult to construct, or benefit a minimal population.
+\end{itemize}
+
+The central problem is thus one of \textbf{data-driven co-optimisation}: how can we systematically site water assets to balance social welfare (employment, vulnerability) with hydrological effectiveness (recharge, yield, resilience), without resorting to arbitrary exchange rates between incomparable objectives (e.g., “livelihood-days” vs.\ “litres of recharge”)?
+
+\section{Proposed Solution Overview (Decoupled Framework)}
+Project WISE proposes a decoupled two-model framework:
+\begin{enumerate}[label=\textbf{M\arabic*.}]
+  \item \textbf{Model 1 (Priority Map)}: A social vulnerability model that produces a high-resolution “need layer” (water + employment).
+  \item \textbf{Model 2 (Siting Model)}: A hydrological siting model that predicts suitable micro-sites for interventions within high-need zones using geospatial ML/hybrid architectures.
+\end{enumerate}
+
+\section{Study Region}
+The system is designed to be generic and scalable (pan-India in principle). In this report, end-sem experiments for Model 2 are demonstrated on \textbf{Anantapur} as a working district-scale testbed, while the pipeline is designed to generalize.
+
+
+\chapter{Background and Related Work}
+
+\section{Remote Sensing Proxies for Hydrology}
+Satellite-derived indices and terrain layers are commonly used for suitability modeling:
+\begin{itemize}
+  \item NDVI dynamics as a vegetation/water-availability proxy,
+  \item DEM-derived slope and wetness indices,
+  \item drainage and flow accumulation,
+  \item land-cover constraints (feasibility),
+  \item rainfall forcing and seasonal variability.
+\end{itemize}
+
+\section{Geospatial ML for Suitability}
+For siting tasks, hybrid systems often outperform purely manual feature engineering:
+\begin{itemize}
+  \item CNN/U-Net can learn high-level spatial features,
+  \item classical models (SVM/RF/GBT) can provide robust classification/regression with strong tabular performance.
+\end{itemize}
+However, these systems critically depend on well-defined ground truth and careful evaluation to avoid spatial leakage.
+
+\chapter{Objectives and Success Criteria}
+
+\section{Objectives}
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+  \item Build a scalable decision framework to align MGNREGA employment goals with water-security outcomes.
+  \item Implement Model 2 end-to-end feature extraction and training pipeline.
+  \item Compare multiple architectures for Model 2 and identify deployment-ready model.
+  \item Define a roadmap for Model 1 integration once Model 2 reliability improves.
+\end{enumerate}
+
+\section{Operational Success Criteria (Model 2)}
+Model 2 is considered successful if it:
+\begin{itemize}
+  \item learn predictive patterns from ground-truth assets and yield stable suitability predictions,
+  \item demonstrate meaningful ranking performance in held-out spatial validation,
+  \item produce interpretable recommendations consistent with known hydrological constraints.
+\end{itemize}
+
+
+\chapter{Data Sources}
+
+\section{Summary}
+\begin{longtable}{p{0.20\textwidth} p{0.32\textwidth} p{0.40\textwidth}}
+\caption{Key datasets and layers used in the project.}\label{tab:datasets_final}\\
+\toprule
+\textbf{Category} & \textbf{Dataset / Source} & \textbf{Role} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Category} & \textbf{Dataset / Source} & \textbf{Role} \\
+\midrule
+\endhead
+Remote sensing + terrain & Google Earth Engine (Sentinel-2, SRTM, Hydro layers, WorldCover, CHIRPS) & Feature stack for Model 2 patches \\
+Ground truth (wells) & \url{https://yashveeeeeeer.github.io/india-geodata/} & Post-midsem reliable well locations / ground truth used for supervised training \\
+Groundwater/context & IndiaWRIS / CGWB portals & Contextual reference; earlier label exploration showed inconsistencies in some sources \\
+\bottomrule
+\end{longtable}
+
+\section{Feature Stack Used for Model 2}
+The final Model 2 stack used in end-sem experiments consists of \textbf{6 geospatial bands}:
+\[
+\{\text{Slope},\ \text{TWI},\ \text{Drainage Density},\ \text{LULC},\ \text{Rainfall},\ \text{NDVI}\}.
+\]
+These bands were exported as \(64\times64\) patches.
+
+
+\chapter{Methodology}
+
+\section{Mid-Sem Phase: Building the GEE \texorpdfstring{$\rightarrow$}{->} TFRecord Pipeline}
+\subsection{Patch-Based Dataset Construction}
+We use GEE to construct spatially aligned multi-layer composites and then sample neighborhood patches around candidate points. Patch-based learning is chosen because well-siting is inherently local and depends on neighborhood context (terrain structure, drainage patterns, land cover constraints), not only a single pixel.
+
+\subsection{Export and Local Preprocessing}
+GEE exports TFRecord shards. Locally, we merge shards and crop patch size from \(65\times65\) to \(64\times64\) to simplify model training and common deep learning tensor requirements.
+
+\subsection{Mid-Sem Bottleneck: Ground Truth Reliability}
+At mid-semester, the key unresolved issue was the absence of a clean supervised well dataset. Some explored sources (e.g., IndiaWRIS-like station data) did not consistently match the needs of ``verified well performance labels'', and borewells are difficult to validate visually.
+
+\section{Post-Midsem Resolution: Reliable Well Ground Truth Source}
+After mid-semester, we identified a new dataset source providing more reliable well/ground truth coverage:
+\begin{center}
+\url{https://yashveeeeeeer.github.io/india-geodata/}
+\end{center}
+This resolved the supervision bottleneck and enabled rigorous architecture experimentation. In the final pipeline:
+\begin{itemize}
+  \item GEE provides consistent \textbf{feature extraction} and patch export,
+  \item the new dataset provides \textbf{well locations / ground truth} for supervised training and evaluation.
+\end{itemize}
+
+\section{End-Sem Preprocessing: Wide + Deep Feature Views}
+\subsection{Deep (Spatial) View}
+Each sample contains an image-like tensor \((64,64,6)\). For PyTorch models, tensors are formatted as \((6,64,64)\).
+
+\subsection{Wide (Tabular) View: 12 Statistics}
+We compute per-band mean and standard deviation:
+\[
+X_{\text{tab}} = [\mu_1,\dots,\mu_6,\sigma_1,\dots,\sigma_6] \in \mathbb{R}^{12}.
+\]
+This representation captures stable hydrological boundaries and reduces sensitivity to minor spatial noise.
+
+\subsection{Train/Test Split Protocol}
+All architectures use the same stratified split (80/20, seed=42) so results are comparable.
+
+\chapter{Architectures Explored (Model 2)}
+
+\section{Model A: Pure Deep CNN (ResNet18)}
+\textbf{Goal:} Determine whether raw spatial patterns alone are sufficient for suitability prediction.
+
+\textbf{Design:}
+\begin{itemize}
+  \item ResNet18 backbone (ImageNet initialization),
+  \item first conv adapted to 6 channels (initialized by channel-mean replication),
+  \item 2-class output head.
+\end{itemize}
+
+\section{Model B: Pure Tabular XGBoost}
+\textbf{Goal:} Determine whether simple statistical summaries (mean/std) are sufficient.
+
+\textbf{Design:} XGBoost classifier on 12-dimensional tabular features.
+
+\section{Model C: Hybrid 1 (ResNet Embeddings + Random Forest)}
+\textbf{Goal:} Fuse spatial awareness with statistical constraints.
+
+\textbf{Design:}
+\begin{itemize}
+  \item fine-tune ResNet briefly,
+  \item extract 512-d embeddings,
+  \item concatenate with 12 tabular stats \(\Rightarrow 524\)-d vector,
+  \item train RandomForest on fused features.
+\end{itemize}
+
+\section{Model D: Hybrid 2 (ResNet Embeddings + XGBoost)}
+\textbf{Goal:} Use the same fused features but apply boosting (error correction) to improve deployment-critical behavior.
+
+\textbf{Design:} XGBoost on 524-d fused features (512 embedding + 12 stats).
+
+
+\chapter{Results \& Discussion}
+
+\section{Evaluation Metrics}
+We report:
+\begin{itemize}
+  \item accuracy,
+  \item precision/recall per class (Not Suitable / Suitable).
+\end{itemize}
+In well-siting deployment, we treat \textbf{Recall(Not Suitable)} as safety-critical to minimize false positives.
+
+\section{Results Table}
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{p{0.26\textwidth} p{0.10\textwidth} p{0.16\textwidth} p{0.16\textwidth} p{0.16\textwidth} p{0.16\textwidth}}
+\toprule
+\textbf{Model} & \textbf{Acc.} &
+\textbf{Prec (NS)} & \textbf{Rec (NS)} &
+\textbf{Prec (S)} & \textbf{Rec (S)} \\
+\midrule
+A: Pure CNN (ResNet18) & 0.5112 & 0.51 & 0.92 & 0.56 & 0.10 \\
+B: Pure Tabular (XGBoost) & 0.6425 & 0.65 & 0.62 & 0.64 & 0.67 \\
+C: Hybrid 1 (ResNet+RF) & 0.7500 & 0.78 & 0.69 & 0.73 & 0.81 \\
+D: Hybrid 2 (ResNet+XGBoost) & 0.7462 & 0.77 & 0.71 & 0.73 & 0.78 \\
+\bottomrule
+\end{tabular}
+\caption{Test-set results taken directly from \texttt{solve1.ipynb} outputs.}
+\label{tab:model2_results}
+\end{table}
+
+\section{Analyzing Failures}
+\subsection{Pure CNN (ResNet18) Mode Collapse}
+The pure CNN achieved \(\approx 51\%\) test accuracy with \textbf{recall(Suitable)=0.10}, indicating collapse toward predicting ``Not Suitable''. Probable causes include limited sample size relative to model capacity, label noise, and insufficient rules to learn from noisy labels.
+
+\subsection{Pure Tabular XGBoost Saturation}
+XGBoost on mean/std reaches \(\approx 64\%\) but caps due to missing spatial awareness. Mean/std cannot encode drainage connectivity, slope transitions, or textural heterogeneity.
+
+\section{Analyzing the Winner}
+Both hybrid models reach \(\approx 75\%\) accuracy because they combine:
+\begin{itemize}
+  \item deep spatial embeddings (structure),
+  \item tabular statistics (stable boundaries).
+\end{itemize}
+For deployment, \textbf{Hybrid 2 (ResNet+XGBoost)} is preferred because Recall(NS)=0.71 exceeds RF’s 0.69, improving safety against false positives in rural drilling.
+
+\section{Feature Importance}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/xgb_feature_importance.png}
+\caption{XGBoost feature importance plot (exported from notebook).}
+\label{fig:xgb_importance}
+\end{figure}
+
+Interpretation: \textbf{LULC\_Mean} often captures surface feasibility constraints affecting infiltration/runoff, while \textbf{NDVI\_Std} captures vegetation heterogeneity that can correlate with fracture-driven moisture pockets in semi-arid Anantapur.
+
+
+\chapter{Deployment: Suitability Heatmaps}
+
+\section{Grid Inference (Sliding Window)}
+A planner-facing workflow requires spatial maps, not only point predictions. We apply sliding-window grid inference:
+\begin{enumerate}
+  \item define a candidate grid over a target region,
+  \item extract \(64\times64\times6\) patches per grid location,
+  \item compute \(P(\text{Suitable})\) using the trained hybrid model,
+  \item render a heatmap to identify safe drilling zones.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/suitability_heatmap.png}
+\caption{Suitability heatmap produced by grid inference (planner-facing output).}
+\label{fig:heatmap}
+\end{figure}
+
+\chapter{Future Scope \& Version 2.0}
+
+\section{Data Enrichment}
+To reduce false positives and improve generalization:
+\begin{itemize}
+  \item lineament density,
+  \item lithology,
+  \item soil texture/permeability
+\end{itemize}
+should be integrated to capture aquifer container properties beyond surface proxies.
+
+\section{Scaling Compute}
+Transition to HPC clusters will enable larger datasets (multi-district), spatial cross-validation, and stronger uncertainty estimates.
+
+\section{Advanced Architectures}
+\begin{enumerate}
+  \item Vision Transformers (ViT): global attention for long-range topographic relationships.
+  \item ConvLSTM (time-series): pre/post monsoon sequences for recharge dynamics.
+  \item ResU-Net (segmentation): pixel-level suitability maps rather than patch-level classification.
+\end{enumerate}
+
+\section{Model 1 Integration}
+The final deployment vision for Project WISE is a top-down, decoupled pipeline. Currently, Model 2 (Hydrological Siting) operates as a standalone tool. In Version 2.0, this will be integrated downstream of Model 1 (Social Priority). The workflow will execute sequentially: Model 1 will first scan socio-economic variables at the macro-level to identify highly vulnerable Gram Panchayats requiring urgent MGNREGA intervention. Model 2 will then be deployed exclusively within those targeted bounding boxes to pinpoint the most hydrologically sound micro-sites for construction, ensuring that assets are built where they are both socially necessary and technically viable.
+
+\chapter*{References}
+\addcontentsline{toc}{chapter}{References}
+\begin{enumerate}
+  \item Jean, N. et al. (2016). Combining satellite imagery and machine learning to predict poverty. \textit{Science}. \url{https://doi.org/10.1126/science.aaf7894}
+  \item CoRE Stack datasets and layers. \url{https://core-stack.org/}
+  \item IndiaWRIS API. \url{https://indiawris.gov.in/swagger-ui/index.html}
+  \item CGWB groundwater data portal. \url{https://gwdata.cgwb.gov.in/}
+  \item India Geodata well dataset source (post-midsem). \url{https://yashveeeeeeer.github.io/india-geodata/}
+\end{enumerate}
+
+\appendix
+\renewcommand{\thechapter}{A\arabic{chapter}}
+\setcounter{chapter}{0}
+
+\chapter{Code Appendix (Mid-Sem Pipeline)}
+\section{Google Earth Engine pipeline (Model 2 prototype)}
+\begin{wiseNote}
+File: \texttt{code/gee\_pipeline.js}
+\end{wiseNote}
+\lstset{style=wise,language=Java}
+\lstinputlisting{code/gee_pipeline.js}
+
+\section{TFRecord inspection utility}
+\begin{wiseNote}
+File: \texttt{code/checkTFRecord.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\lstinputlisting{code/checkTFRecord.py}
+
+\section{TFRecord merge + crop utility}
+\begin{wiseNote}
+File: \texttt{code/mergeAndCrop.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\lstinputlisting{code/mergeAndCrop.py}
+
+\chapter{Code Appendix (End-Sem Python Scripts)}
+
+\section{TFRecord Merge + Crop Utility}
+\begin{wiseNote}
+File: \texttt{code/mergeAndCrop.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import glob, os, sys, tensorflow as tf, numpy as np
+from tqdm import tqdm
+
+INPUT_DIR = "/content/drive/MyDrive/Project_WISE/data/ProjectWise_Data/"
+INPUT_GLOB = os.path.join(INPUT_DIR, "Anantapur_wellsiting_batch_*.tfrecord.gz")
+OUT_TFRECORD = "/content/drive/MyDrive/Project_WISE/data/merged_64x64_wells.tfrecord"
+
+PATCH = 65
+OUT_PATCH = 64
+BANDS = 6
+EXPECTED_FLAT = PATCH * PATCH * BANDS
+SKIP_MALFORMED = True
+
+all_files = glob.glob(INPUT_GLOB)
+all_files.sort()  # sort alphabetically so batch_0 through batch_7 are in order
+files = all_files
+
+if not files:
+    print(f"No files found at: {INPUT_GLOB}")
+    sys.exit(1)
+
+print(f"Selected the {len(files)} newest files:")
+for f in files: print(" -", os.path.basename(f))
+
+def parse_example_bytesproto(raw_bytes):
+    ex = tf.train.Example.FromString(raw_bytes)
+    feat = ex.features.feature
+    if 'patch' not in feat: raise ValueError("Key 'patch' not found in record.")
+    fpatch = feat['patch']
+    arr = None
+    if len(fpatch.float_list.value) > 0: arr = np.array(fpatch.float_list.value, dtype=np.float32)
+    if arr is None: raise ValueError("Could not decode 'patch' data.")
+    if 'label' not in feat: raise ValueError("Key 'label' not found.")
+    flabel = feat['label']
+    if len(flabel.float_list.value) > 0: label = int(flabel.float_list.value[0])
+    elif len(flabel.int64_list.value) > 0: label = int(flabel.int64_list.value[0])
+    else: raise ValueError("Label is empty.")
+    return arr, label
+
+def center_crop_arr(arr_flat):
+    if arr_flat.size != EXPECTED_FLAT: raise ValueError(f"Size mismatch: {arr_flat.size} vs {EXPECTED_FLAT}")
+    img = arr_flat.reshape((PATCH, PATCH, BANDS))
+    return img[0:OUT_PATCH, 0:OUT_PATCH, :]
+
+writer = tf.io.TFRecordWriter(OUT_TFRECORD)
+total_in, total_written, errors = 0, 0, 0
+
+for f in tqdm(files):
+    try:
+        ds = tf.data.TFRecordDataset([f], compression_type='GZIP')
+        for raw in ds.as_numpy_iterator():
+            total_in += 1
+            try:
+                arr_flat, label = parse_example_bytesproto(raw)
+                cropped = center_crop_arr(arr_flat)
+                img_bytes = cropped.tobytes()
+                feature = {
+                    'image': tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_bytes])),
+                    'label': tf.train.Feature(int64_list=tf.train.Int64List(value=[label])),
+                    'height': tf.train.Feature(int64_list=tf.train.Int64List(value=[OUT_PATCH])),
+                    'width': tf.train.Feature(int64_list=tf.train.Int64List(value=[OUT_PATCH])),
+                    'bands': tf.train.Feature(int64_list=tf.train.Int64List(value=[BANDS]))
+                }
+                example = tf.train.Example(features=tf.train.Features(feature=feature))
+                writer.write(example.SerializeToString())
+                total_written += 1
+            except Exception as e:
+                errors += 1
+                if not SKIP_MALFORMED: raise e
+    except Exception as e:
+        print(f"Error reading file {f}: {e}")
+
+writer.close()
+print(f"\nDone. Input records: {total_in}, Written: {total_written}, Errors: {errors}")
+\end{lstlisting}
+
+\section{Data Loader + Tabular Statistics}
+\begin{wiseNote}
+File: \texttt{code/dataloader.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import numpy as np
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
+
+def load_dataset(tfrecord_path):
+    print(f"Loading data from: {tfrecord_path}")
+    X_list, y_list = [], []
+    for raw_record in tqdm(tf.data.TFRecordDataset([tfrecord_path])):
+        ex = tf.train.Example.FromString(raw_record.numpy())
+        y_list.append(ex.features.feature['label'].int64_list.value[0])
+        img_bytes = ex.features.feature['image'].bytes_list.value[0]
+        # Reshape and transpose for PyTorch (Channels, Height, Width)
+        img = np.frombuffer(img_bytes, dtype=np.float32).reshape(64, 64, 6).transpose(2, 0, 1)
+        X_list.append(img)
+    return np.array(X_list), np.array(y_list)
+
+# 1. Load the merged file
+tfrecord_file = "/content/drive/MyDrive/Project_WISE/data/merged_64x64_wells.tfrecord"
+X_patches, y = load_dataset(tfrecord_file)
+
+# 2. Generate the 12 tabular features (Mean and Std) for XGBoost
+print("Generating tabular features...")
+X_tabular = np.hstack([X_patches.mean(axis=(2, 3)), X_patches.std(axis=(2, 3))])
+
+# 3. Split the data globally so all models can use the exact same test set
+print("Splitting data into Train and Test sets...")
+X_p_train, X_p_test, X_t_train, X_t_test, y_train, y_test = train_test_split(
+    X_patches, X_tabular, y, test_size=0.2, random_state=42, stratify=y)
+
+print(f"\nSuccess! Training patches shape: {X_p_train.shape}")
+print(f"Training tabular shape: {X_t_train.shape}")
+print("You are now clear to run the Pure CNN and XGBoost cells!")
+\end{lstlisting}
+
+\section{Model A: Pure CNN (ResNet18)}
+\begin{wiseNote}
+File: \texttt{code/purecnn.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import torch
+import torch.nn as nn
+import torchvision.models as models
+from sklearn.metrics import classification_report, accuracy_score
+
+# 1. Define the End-to-End Model
+class EndToEndGeoResNet(nn.Module):
+    def __init__(self, in_channels=6, num_classes=2):
+        super(EndToEndGeoResNet, self).__init__()
+        self.resnet = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+        
+        original_conv1 = self.resnet.conv1
+        self.resnet.conv1 = nn.Conv2d(in_channels, original_conv1.out_channels,
+                                      kernel_size=original_conv1.kernel_size,
+                                      stride=original_conv1.stride,
+                                      padding=original_conv1.padding, bias=False)
+        with torch.no_grad():
+            self.resnet.conv1.weight.copy_(original_conv1.weight.mean(dim=1, keepdim=True).repeat(1, in_channels, 1, 1))
+        
+        self.resnet.fc = nn.Linear(512, num_classes)
+
+    def forward(self, x):
+        return self.resnet(x)
+
+# 2. Training Loop
+def train_pure_cnn(X_train, y_train, X_test, y_test, epochs=25):
+    print("--- Training Pure End-to-End ResNet ---")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = EndToEndGeoResNet().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    criterion = nn.CrossEntropyLoss()
+    
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long()),
+        batch_size=32, shuffle=True)
+    
+    model.train()
+    for ep in range(epochs):
+        total_loss, correct, total = 0, 0, 0
+        for batch_x, batch_y in train_loader:
+            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+            optimizer.zero_grad()
+            outputs = model(batch_x)
+            loss = criterion(outputs, batch_y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+            correct += (outputs.argmax(1) == batch_y).sum().item()
+            total += batch_y.size(0)
+        print(f"Epoch {ep+1:02d} | Train Acc: {100*correct/total:.2f}%")
+        
+    print("\n--- Evaluating Pure CNN ---")
+    model.eval()
+    test_tensor = torch.from_numpy(X_test).float().to(device)
+    with torch.no_grad():
+        test_preds = model(test_tensor).argmax(1).cpu().numpy()
+    
+    print(classification_report(y_test, test_preds, target_names=['Not Suitable', 'Suitable']))
+    print(f"Pure CNN Test Accuracy: {accuracy_score(y_test, test_preds):.4f}")
+    return model
+
+pure_cnn_model = train_pure_cnn(X_p_train, y_train, X_p_test, y_test)
+\end{lstlisting}
+
+\section{Model B: Pure Tabular (XGBoost)}
+\begin{wiseNote}
+File: \texttt{code/xgboost.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import xgboost as xgb
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report, accuracy_score
+
+def train_xgboost(X_train_tab, y_train, X_test_tab, y_test):
+    print("--- Training Pure Tabular XGBoost ---")
+    feature_names = [
+        "Slope_Mean", "TWI_Mean", "Drainage_Mean", "LULC_Mean", "Rainfall_Mean", "NDVI_Mean",
+        "Slope_Std", "TWI_Std", "Drainage_Std", "LULC_Std", "Rainfall_Std", "NDVI_Std"
+    ]
+    
+    xgb_model = xgb.XGBClassifier(n_estimators=150, max_depth=6, learning_rate=0.05, random_state=42)
+    xgb_model.fit(X_train_tab, y_train)
+    
+    preds = xgb_model.predict(X_test_tab)
+    print("\n--- Evaluating XGBoost ---")
+    print(classification_report(y_test, preds, target_names=['Not Suitable', 'Suitable']))
+    print(f"XGBoost Test Accuracy: {accuracy_score(y_test, preds):.4f}")
+    
+    plt.figure(figsize=(10, 6))
+    xgb.plot_importance(xgb_model, max_num_features=12, importance_type='weight',
+                        title='What features matter most for Well Siting?',
+                        xlabel='F-Score (Importance)')
+    plt.yticks(range(12), [feature_names[i] for i in xgb_model.feature_importances_.argsort()])
+    plt.tight_layout()
+    plt.show()
+
+train_xgboost(X_t_train, y_train, X_t_test, y_test)
+\end{lstlisting}
+
+\section{Model C: Hybrid 1 (ResNet + Random Forest)}
+\begin{wiseNote}
+File: \texttt{code/hybrid1.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import os, joblib, torch, numpy as np, tensorflow as tf
+import torch.nn as nn, torchvision.models as models
+from tqdm import tqdm
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, accuracy_score
+from sklearn.model_selection import train_test_split
+
+class GeoResNet(nn.Module):
+    def __init__(self, in_channels=6):
+        super(GeoResNet, self).__init__()
+        try: weights = models.ResNet18_Weights.IMAGENET1K_V1; self.resnet = models.resnet18(weights=weights)
+        except: self.resnet = models.resnet18(pretrained=True)
+        original_conv1 = self.resnet.conv1
+        self.resnet.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=original_conv1.out_channels,
+                                      kernel_size=original_conv1.kernel_size, stride=original_conv1.stride,
+                                      padding=original_conv1.padding, bias=False)
+        with torch.no_grad():
+            mean_weights = original_conv1.weight.mean(dim=1, keepdim=True)
+            self.resnet.conv1.weight.copy_(mean_weights.repeat(1, in_channels, 1, 1))
+        self.resnet.fc = nn.Identity()
+    def forward(self, x): return self.resnet(x)
+
+class HybridWideAndDeep:
+    def __init__(self, in_channels=6):
+        self.deep_model = GeoResNet(in_channels=in_channels)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.deep_model.to(self.device)
+        self.deep_model.eval()
+
+    def extract_embeddings(self, image_patches, batch_size=32):
+        dataset = torch.utils.data.TensorDataset(torch.from_numpy(image_patches).float())
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+        embeddings = []
+        with torch.no_grad():
+            for batch in dataloader:
+                embeddings.append(self.deep_model(batch[0].to(self.device)).cpu().numpy())
+        return np.vstack(embeddings) if embeddings else np.zeros((0, 512), dtype=np.float32)
+
+    def fit(self, X_patches, X_tabular, y):
+        self.pretrain_cnn(X_patches, y)
+        print(f"Extracting deep features from {len(X_patches)} patches...")
+        deep_features = self.extract_embeddings(X_patches)
+        hybrid_features = np.hstack([deep_features, X_tabular])
+        self.classifier = RandomForestClassifier(n_estimators=200, max_depth=8, min_samples_leaf=4, random_state=42, n_jobs=-1)
+        self.classifier.fit(hybrid_features, y)
+        print(f"RF Training Accuracy: {accuracy_score(y, self.classifier.predict(hybrid_features)):.4f}")
+
+    def predict_proba(self, X_patches, X_tabular):
+        return self.classifier.predict_proba(np.hstack([self.extract_embeddings(X_patches), X_tabular]))[:, 1]
+
+    def save(self, output_dir="/content/drive/MyDrive/Project_WISE/saved_model"):
+        if not os.path.exists(output_dir): os.makedirs(output_dir)
+        torch.save(self.deep_model.state_dict(), os.path.join(output_dir, "geo_resnet.pth"))
+        joblib.dump(self.classifier, os.path.join(output_dir, "rf_classifier.joblib"))
+        print(f"Models saved to: {output_dir}")
+
+    def pretrain_cnn(self, X_train, y_train, epochs=15):
+        print(f"\n--- Fine-Tuning CNN for {epochs} epochs ---")
+        self.deep_model.train()
+        self.deep_model.resnet.fc = nn.Linear(512, 2).to(self.device)
+        optimizer = torch.optim.Adam(self.deep_model.parameters(), lr=1e-4, weight_decay=1e-4)
+        criterion = nn.CrossEntropyLoss()
+        loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long()), batch_size=32, shuffle=True)
+        for ep in range(epochs):
+            total_loss, correct, total = 0, 0, 0
+            for batch_x, batch_y in loader:
+                batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
+                optimizer.zero_grad()
+                outputs = self.deep_model(batch_x)
+                loss = criterion(outputs, batch_y)
+                loss.backward(); optimizer.step()
+                total_loss += loss.item()
+                correct += (outputs.argmax(1) == batch_y).sum().item()
+                total += batch_y.size(0)
+            print(f"Epoch {ep+1:02d} | Loss: {total_loss/len(loader):.4f} | Acc: {100*correct/total:.2f}%")
+        self.deep_model.resnet.fc = nn.Identity()
+        self.deep_model.eval()
+
+if __name__ == "__main__":
+    model = HybridWideAndDeep(in_channels=6)
+    model.fit(X_p_train, X_t_train, y_train)
+    print("\n--- Evaluation on Test Set ---")
+    preds = (model.predict_proba(X_p_test, X_t_test) > 0.5).astype(int)
+    print(classification_report(y_test, preds, target_names=['Not Suitable', 'Suitable']))
+    model.save()
+\end{lstlisting}
+
+\section{Model D: Hybrid 2 (ResNet + XGBoost)}
+\begin{wiseNote}
+File: \texttt{code/hybrid2.py}
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import xgboost as xgb
+import numpy as np
+from sklearn.metrics import classification_report, accuracy_score
+
+print("--- Training Hybrid: GeoResNet + XGBoost ---")
+print("Extracting deep embeddings for Train and Test sets...")
+train_embeddings = model.extract_embeddings(X_p_train)
+test_embeddings = model.extract_embeddings(X_p_test)
+
+hybrid_X_train = np.hstack([train_embeddings, X_t_train])
+hybrid_X_test = np.hstack([test_embeddings, X_t_test])
+
+print(f"Fused Feature Matrix Shape: {hybrid_X_train.shape}")
+
+hybrid_xgb = xgb.XGBClassifier(n_estimators=200, max_depth=6, learning_rate=0.05, random_state=42)
+hybrid_xgb.fit(hybrid_X_train, y_train)
+
+preds = hybrid_xgb.predict(hybrid_X_test)
+print("\n--- Evaluation on Test Set ---")
+print(classification_report(y_test, preds, target_names=['Not Suitable', 'Suitable']))
+print(f"Hybrid (ResNet + XGBoost) Accuracy: {accuracy_score(y_test, preds):.4f}")
+\end{lstlisting}
+
+\section{Deployment: Grid Inference Heatmap}
+\begin{wiseNote}
+File: \texttt{code/heatmap.py} 
+\end{wiseNote}
+\lstset{style=wise,language=Python}
+\begin{lstlisting}
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+
+print("\n--- Generating Groundwater Inference Heatmap (RF Hybrid) ---")
+
+grid_size = 10
+num_patches = grid_size * grid_size
+
+sample_patches = X_p_test[:num_patches]
+sample_tabular = X_t_test[:num_patches]
+
+print("Calculating groundwater probabilities...")
+suitability_probs = model.predict_proba(sample_patches, sample_tabular)
+heatmap_grid = suitability_probs.reshape(grid_size, grid_size)
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(heatmap_grid, cmap='YlGnBu', vmin=0.0, vmax=1.0, 
+            cbar_kws={'label': 'Probability of Groundwater Suitability'})
+
+plt.title('Predictive Heatmap: Groundwater Potential (ResNet + RF)', fontsize=14, pad=15)
+plt.xlabel('Grid X (2km Spatial Resolution)')
+plt.ylabel('Grid Y (2km Spatial Resolution)')
+
+plt.tight_layout()
+plt.show()
+\end{lstlisting}
+
+\end{document}
